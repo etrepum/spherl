@@ -1,0 +1,15 @@
+{application, spherl,
+ [
+  {description, "Sphero Erlang SDK"},
+  {vsn, "1"},
+  {registered, []},
+  {applications, [
+                  kernel,
+                  stdlib,
+                  uart,
+                  dthread,
+                  fnotify
+                 ]},
+  {mod, { spherl_app, []}},
+  {env, []}
+ ]}.
