@@ -182,11 +182,12 @@ open(Dev) ->
     open(Dev, 100).
 
 open(Dev, Retries) ->
-    try uart:open(Dev, [{baud, 115200}, {mode, binary} ])
+    try uart:open(Dev, [{baud, 115200}, {mode, binary}])
     catch
         error:Err ->
             case Retries > 0 of
                 true ->
+                    timer:sleep(20),
                     open(Dev, Retries - 1);
                 false ->
                     {error, Err}
