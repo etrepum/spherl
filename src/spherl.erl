@@ -277,9 +277,9 @@ decode_packet(Rest) ->
 
 %% Core packets
 -type packet() :: term().
--type word() :: 0..16#ffff.
--type dword() :: 0..16#ffffffff.
--type qword() :: 0..16#ffffffffffffffff.
+-type word()   :: 0..16#ffff.
+-type dword()  :: 0..16#ffffffff.
+-type qword()  :: 0..16#ffffffffffffffff.
 
 core(CID) ->
     [{device_id, ?DID_CORE}, {command_id, CID}].
@@ -386,16 +386,22 @@ get_application_configuration_block() ->
 get_chassis_id() ->
     sphero(?CMD_GET_CHASSIS_ID).
 
--type level_option() :: start | final_angle | sleep | control_system.
+-type level_option() :: (
+                    %% start starts the routine, false aborts the routine if in
+                    %% progress
+                    start |
+                    %% final_angle rotates to heading equal to beginning
+                    %% heading, false stops
+                    final_angle |
+                    %% sleep goes to sleep after leveling, false stays awake
+                    sleep |
+                    %% control_system leaves control system on, false leaves off
+                    control_system).
 -spec self_level(0..90, byte(), byte(), [level_option()]) -> term().
 self_level(AngleLimit, Timeout, TrueTime, Options)
   when ((AngleLimit >= 0 andalso AngleLimit =< 90) andalso
         (Timeout >= 0 andalso Timeout =< 255) andalso
         (TrueTime >= 0 andalso TrueTime =< 255)) ->
-    %% start starts the routine, false aborts the routine if in progress
-    %% final_angle rotates to heading equal to beginning heading, false stops
-    %% sleep goes to sleep after leveling, false stays awake
-    %% control_system leaves control system on, false leaves off
     sphero(?CMD_SELF_LEVEL,
            <<0:4
             , (bitflag(control_system, Options)):1
@@ -567,11 +573,11 @@ roll(Speed, Heading, State) ->
 -spec motor_mode(motor_mode()) -> byte().
 motor_mode(Mode) ->
     case Mode of
-        off -> 0;
+        off     -> 0;
         forward -> 1;
         reverse -> 2;
-        brake -> 3;
-        ignore -> 4
+        brake   -> 3;
+        ignore  -> 4
     end.
 
 -spec set_raw_motor_values({motor_mode(), byte()}, {motor_mode(), byte()}) ->
@@ -586,31 +592,33 @@ set_raw_motor_values({LMode, LVal}, {RMode, RVal}) ->
 set_motion_timeout(TimeMSec) ->
     sphero(?CMD_SET_MOTION_TO, <<TimeMSec:16>>).
 
--type option_flag() :: (prevent_sleep |
-                        enable_vector_drive |
-                        disable_self_leveling_on_charger |
-                        force_tail_led_on |
-                        enable_motion_timeouts |
-                        enable_retail_demo_mode).
+-type option_flag() :: (
+                   %% Set to prevent Sphero from immediately going to sleep when
+                   %% placed in the charger and connected over Bluetooth.
+                   prevent_sleep |
+                   %% Set to enable Vector Drive, that is, when Sphero is
+                   %% stopped and a new roll command is issued it achieves the
+                   %% heading before moving along it.
+                   enable_vector_drive |
+                   %% Set to disable self-leveling when Sphero is inserted into
+                   %% the charger.
+                   disable_self_leveling_on_charger |
+                   %% Set to force the tail LED always on.
+                   force_tail_led_on |
+                   %% Set to enable motion timeouts (see set_motion_timeout/1)
+                   enable_motion_timeouts |
+                   %% Set to enable retail Demo Mode (when placed in the
+                   %% charger, ball runs a slow rainbow macro for 60 minutes
+                   %% and then goes to sleep).
+                   enable_retail_demo_mode).
 option_flag_val(Opt) ->
     case Opt of
-        %% Set to prevent Sphero from immediately going to sleep when placed in
-        %% the charger and connected over Bluetooth.
-        prevent_sleep -> 16#00000001;
-        %% Set to enable Vector Drive, that is, when Sphero is stopped and a
-        %% new roll command is issued it achieves the heading before moving
-        %% along it.
-        enable_vector_drive -> 16#00000002;
-        %% Set to disable self-leveling when Sphero is inserted into the
-        %% charger.
+        prevent_sleep                    -> 16#00000001;
+        enable_vector_drive              -> 16#00000002;
         disable_self_leveling_on_charger -> 16#00000004;
-        %% Set to force the tail LED always on.
-        force_tail_led_on -> 16#00000008;
-        %% Set to enable motion timeouts (see set_motion_timeout/1)
-        enable_motion_timeouts -> 16#00000010;
-        %% Set to enable retail Demo Mode (when placed in the charger, ball runs
-        %% a slow rainbow macro for 60 minutes and then goes to sleep).
-        enable_retail_demo_mode -> 16#00000020
+        force_tail_led_on                -> 16#00000008;
+        enable_motion_timeouts           -> 16#00000010;
+        enable_retail_demo_mode          -> 16#00000020
     end.
 
 option_flags(Options) ->
