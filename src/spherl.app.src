@@ -1,3 +1,4 @@
+%% -*- mode: erlang -*-
 {application, spherl,
  [
   {description, "Sphero Erlang SDK"},
@@ -8,7 +9,10 @@
                   stdlib,
                   uart,
                   dthread,
-                  fnotify
+                  fnotify,
+                  crypto,
+                  ranch,
+                  cowboy
                  ]},
   {mod, { spherl_app, []}},
   {env, []}
