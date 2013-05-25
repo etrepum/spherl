@@ -70,6 +70,7 @@
 -type word()   :: 0..16#ffff.
 -type dword()  :: 0..16#ffffffff.
 -type qword()  :: 0..16#ffffffffffffffff.
+-type s16()    :: -32768..32767.
 
 -define(SOP1, 16#ff).
 -define(SOP2_RESPONSE, 16#ff).
@@ -236,7 +237,7 @@ decode_response(get_versioning,
                  MSAVer, MSARev,
                  BLMaj:4, BLMin:4,
                  BASMaj:4, BASMin:4,
-                 OverMaj:4, OverMin:4>>) ->
+                 MacroMaj:4, MacroMin:4>>) ->
     %% This is my actual hardware and what the iOS SDK does
     [{record, 1},
      {model, MDL},
@@ -244,7 +245,7 @@ decode_response(get_versioning,
      {main_sphero_application, {MSAVer, MSARev}},
      {bootloader, {BLMaj, BLMin}},
      {orbBasic, {BASMaj, BASMin}},
-     {overlayManager, {OverMaj, OverMin}}];
+     {macro, {MacroMaj, MacroMin}}];
 decode_response(get_versioning,
                 <<16#02, MDL, HW,
                  MSAVer, MSARev,
@@ -348,6 +349,59 @@ format_mac(<<X,Rest/binary>>) ->
                                     [$: | format_mac(Rest)]
                             end].
 
+-type xyz() :: {X :: s16(), Y :: s16(), Z :: s16()}.
+-type collision_axis() :: x | y.
+-type power_state() :: charging | ok | low | critical.
+-type self_level_result() :: unknown
+                           | timed_out
+                           | sensors_error
+                           | self_level_disabled
+                           | aborted
+                           | charger_not_found
+                           | success.
+
+-type orbbasic_error() :: 'Syntax error'
+                        | 'Unknown statement'
+                        | 'GOSUB depth exceeded'
+                        | 'RETURN without GOSUB'
+                        | 'NEXT without FOR'
+                        | 'FOR depth exceeded'
+                        | 'Bad STEP value'
+                        | 'Divide by zero'
+                        | 'Bad line number'
+                        | 'Illegal index'
+                        | 'Expression too complex'
+                        | 'Bad numeric parameter'
+                        | 'User abort'
+                        | 'Out of data'.
+-type sync_response() :: {response, MRSP :: byte()
+                                  , SEQ :: byte()
+                                  , Data :: binary()}.
+-type async_response() :: {power_notification, power_state()}
+                        | {level_1_diagnostic_response, binary()}
+                        | {level_2_diagnostic_response, binary()}
+                        | {sensor_data_streaming, [s16()]}
+                        | {config_block_contents, binary()}
+                        | {pre_sleep_warning, binary()}
+                        | {macro_emit_marker, { Marker :: byte()
+                                              , MacroID :: byte()
+                                              , CommandNum :: word() }}
+                        | {collision_detected, { xyz()
+                                               , collision_axis()
+                                               , {XMag :: s16(), YMag :: s16()}
+                                               , Speed :: s16()
+                                               , Timestamp :: dword() }}
+                        | {orbbasic_print, binary()}
+                        | {orbbasic_error_ascii, binary()}
+                        | {orbbasic_error_binary, { Line :: word()
+                                                  , orbbasic_error() }}
+                        | {self_level_complete, self_level_result()}.
+-type decode_error_name() :: invalid_checksum | invalid_packet_header.
+-spec decode_packet(binary()) -> { ok
+                                 , sync_response() | {async, async_response()}
+                                 , binary() }
+                               | { more, undefined | non_neg_integer() }
+                               | { error, {decode_error_name(), binary()} }.
 decode_packet(P = <<?SOP1, ?SOP2_RESPONSE, MRSP, SEQ, DLEN,
                    Payload:DLEN/binary, Rest/binary>>) ->
     DataSize = DLEN - 1,
@@ -377,11 +431,13 @@ decode_packet(Rest) when byte_size(Rest) < 5 ->
 decode_packet(Rest) ->
     {error, {invalid_packet_header, Rest}}.
 
+-spec power_state(byte()) -> power_state().
 power_state(16#01) -> charging;
 power_state(16#02) -> ok;
 power_state(16#03) -> low;
 power_state(16#04) -> critical.
 
+-spec self_level_result(byte()) -> self_level_result().
 self_level_result(16#00) -> unknown;
 self_level_result(16#01) -> timed_out;
 self_level_result(16#02) -> sensors_error;
@@ -390,9 +446,11 @@ self_level_result(16#04) -> aborted;
 self_level_result(16#05) -> charger_not_found;
 self_level_result(16#06) -> success.
 
+-spec collision_axis(byte()) -> collision_axis().
 collision_axis(16#00) -> x;
 collision_axis(16#01) -> y.
 
+-spec orbbasic_error(byte()) -> orbbasic_error().
 orbbasic_error(16#01) -> 'Syntax error';
 orbbasic_error(16#02) -> 'Unknown statement';
 orbbasic_error(16#03) -> 'GOSUB depth exceeded';

@@ -116,7 +116,6 @@ receive_packets(Data, State) ->
         {more, _N} ->
             State#state{buffer=Data};
         {ok, Packet, Rest} ->
-            io:format("received ~p~n", [Packet]),
             receive_packets(Rest, handle_packet(Packet, State))
     end.
 
