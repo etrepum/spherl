@@ -615,6 +615,7 @@ self_level(AngleLimit, Timeout, TrueTime, Options)
                                       quaternion3 |
                                       locator_x |
                                       locator_y |
+                                      accel_one |
                                       velocity_x |
                                       velocity_y).
 -type data_streaming_convenience_option() :: (imu_angles_filtered_all |
@@ -663,8 +664,10 @@ data_streaming_mask_val(Opt) ->
         quaternion1                   -> 16#4000000000000000;
         quaternion2                   -> 16#2000000000000000;
         quaternion3                   -> 16#1000000000000000;
+        %% Odometer x, y in the documentation
         locator_x                     -> 16#0800000000000000;
         locator_y                     -> 16#0400000000000000;
+        accel_one                     -> 16#0200000000000000;
         velocity_x                    -> 16#0100000000000000;
         velocity_y                    -> 16#0080000000000000;
         imu_angles_filtered_all       -> 16#0000000000070000;
