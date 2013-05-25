@@ -67,7 +67,7 @@ handle_call({exec, F}, _From, State) ->
 handle_call({send, Packet}, From, State) ->
     {noreply, add_continuation(
                 From, Packet,
-                send_packet([answer | Packet], State))};
+                send_packet(Packet, true, State))};
 handle_call(Req, From, State) ->
     error_logger:format("** ~s ~s received unknown call\n"
                         "** message ~p\n"
@@ -78,7 +78,7 @@ handle_call(Req, From, State) ->
     {reply, error, State}.
 
 handle_cast({send_async, Packet}, State) ->
-    {noreply, ignore_continuation(send_packet(Packet, State))};
+    {noreply, ignore_continuation(send_packet(Packet, false, State))};
 handle_cast(stop, State) ->
     {stop, normal, State};
 handle_cast(Req, State) ->
@@ -120,7 +120,7 @@ receive_packets(Data, State) ->
             receive_packets(Rest, handle_packet(Packet, State))
     end.
 
-handle_packet(Packet={async, _IDCode, _Data}, State) ->
+handle_packet({async, Packet}, State) ->
     push_async(Packet, State),
     State;
 handle_packet(Packet={response, _MSRP, SEQ, _Data}, State) ->
@@ -141,13 +141,11 @@ ignore_continuation({_Seq, S}) ->
 add_continuation(From, Packet, {Seq, S=#state{continuations=D}}) ->
     S#state{continuations=dict:store(Seq, {From, Packet}, D)}.
 
-continue({From, _Orig}, Packet) ->
-    gen_server:reply(From, Packet).
+continue({From, Orig}, Packet) ->
+    gen_server:reply(From, spherl_cmd:interpret_response(Orig, Packet)).
 
-send_packet(Packet, State=#state{uart=Uart, sequence_num=N}) ->
-    uart:send(Uart, spherl_cmd:encode_packet([{sequence_num, N},
-                                              reset_timeout
-                                              | Packet])),
+send_packet(Packet, Answer, State=#state{uart=Uart, sequence_num=N}) ->
+    ok = uart:send(Uart, spherl_cmd:encode_packet(Packet, N, Answer, true)),
     {N, State#state{sequence_num=(N + 1) band 255}}.
 
 push_async(Msg, #state{async_process=Pid}) when is_pid(Pid) ->
