@@ -11,29 +11,24 @@
 start(_StartType, _StartArgs) ->
     {ok, Port} = application:get_env(?APP, port),
     {ok, NumAcceptors} = application:get_env(?APP, num_acceptors),
-    first_ok([fun spherl_sup:start_link/0,
-              fun () ->
-                      check_listener(
-                        spherl_http_listener,
-                        NumAcceptors,
-                        [{port, Port}],
-                        [{env, {dispatch, spherl_http:dispatch()}}])
-              end]).
-
-first_ok([F | Rest]) ->
-    first_ok(Rest, F()).
-
-first_ok([F | Rest], R={ok, _}) ->
-    case F() of
-        {ok, _} ->
-            first_ok(Rest, R);
-        Err ->
-            Err
-    end;
-first_ok(_Fs, Err) ->
-    Err.
+    case spherl_sup:start_link() of
+        {ok, Pid} ->
+            case check_listener(
+                   spherl_http_listener,
+                   NumAcceptors,
+                   [{port, Port}],
+                   [{env, [{dispatch, spherl_http:dispatch()}]}]) of
+                {ok, _Listener} ->
+                    {ok, Pid};
+                ListenErr ->
+                    ListenErr
+            end;
+        SupErr ->
+            SupErr
+    end.
 
 stop(_State) ->
+    cowboy:stop_listener(spherl_http_listener),
     ok.
 
 check_listener(Name, NumAcceptors, TransOpts, ProtoOpts) ->

@@ -1,22 +1,44 @@
 -module(spherl_server).
 -behaviour(gen_server).
+-export([all/0, where/1, devices/0]).
 -export([send/2, send_async/2, set_async_process/2]).
 -export([start/1, start_link/1, stop/1]).
 -export([init/1, handle_call/3, handle_cast/2, terminate/2, code_change/3,
          handle_info/2]).
 
--define(DEFAULT_DEV, "/dev/tty.Sphero-PYO-RN-SPP").
+-define(DEFAULT_NAME, "tty.Sphero-PYO-RN-SPP").
 
--record(state, { name = undefined
+-record(state, { name = ?DEFAULT_NAME
                , server_opts = []
-               , dev = ?DEFAULT_DEV
                , retries = 10
+               , dev = undefined
                , uart = undefined
                , buffer = <<>>
                , sequence_num = 1
                , continuations = dict:new()
                , async_process = undefined
                }).
+
+where(Name) ->
+    gproc:where({n, l, {?MODULE, Name}}).
+
+devices() ->
+    {ok, Devs} = uart_devices:get_list(),
+    All = all(),
+    lists:flatmap(
+      fun (Dev) ->
+              N = iolist_to_binary(Dev),
+              case binary:match(N, <<"Sphero-">>) of
+                  nomatch ->
+                      [];
+                  _Found ->
+                      [{N, lists:keyfind(N, 1, All) =/= false}]
+              end
+      end,
+      Devs).
+
+all() ->
+    gproc:lookup_values({p, l, {?MODULE, name}}).
 
 send(Pid, Packet) ->
     gen_server:call(Pid, {send, Packet}).
@@ -35,17 +57,13 @@ start_link(Options) ->
 
 gen_start(F, Options) ->
     State = parse_options(Options, #state{}),
-    #state{name=Name, server_opts=ServerOpts} = State,
-    case Name =:= undefined of
-        true ->
-            gen_server:F(?MODULE, State, ServerOpts);
-        false ->
-            gen_server:F(Name, ?MODULE, State, ServerOpts)
-    end.
+    #state{server_opts=ServerOpts} = State,
+    gen_server:F(?MODULE, State, ServerOpts).
 
 parse_options(Options, State) ->
-    Fs = lists:zip(record_info(fields, state),
-                   lists:seq(2, record_info(size, state))),
+    Fs = [{name, #state.name},
+          {server_opts, #state.server_opts},
+          {retries, #state.retries}],
     lists:foldr(
       fun ({K, V}, S) ->
               case lists:keyfind(K, 1, Fs) of
@@ -58,16 +76,36 @@ parse_options(Options, State) ->
       State,
       Options).
 
-stop(Name) when is_pid(Name) orelse is_atom(Name) ->
-    gen_server:cast(Name, stop).
+stop(Pid) when is_pid(Pid) ->
+    gen_server:cast(Pid, stop).
 
-init(State=#state{dev=Dev, retries=Retries}) ->
-    case open(Dev, Retries) of
-        {ok, Uart} ->
-            {ok, State#state{uart=Uart}};
+init(State=#state{name=Name, retries=Retries}) ->
+    case uart_devices:alloc(Name) of
+        {ok, Dev} ->
+            case open(Dev, Retries) of
+                {ok, Uart} ->
+                    gproc_register(State#state{uart=Uart, dev=Dev});
+                {error, Err} ->
+                    {stop, {uart, Err}}
+            end;
         {error, Err} ->
             {stop, {uart, Err}}
     end.
+
+gproc_register(State=#state{name=Name}) ->
+    N = iolist_to_binary(Name),
+    true = gproc:reg({n, l, {?MODULE, N}}),
+    true = gproc:reg({p, l, {?MODULE, name}}, N),
+    gproc_publish([<<"device_connected">>, N]),
+    {ok, State}.
+
+gproc_unregister(#state{name=Name}) ->
+    N = iolist_to_binary(Name),
+    gproc_publish([<<"device_disconnected">>, N]),
+    ok.
+
+gproc_publish(Event) when is_list(Event) ->
+    gproc_ps:publish(l, spherl_client, Event).
 
 handle_call({exec, F}, _From, State) ->
     {reply, F(State), State};
@@ -110,13 +148,13 @@ handle_info(Req, State) ->
                          Req]),
     {noreply, State}.
 
-name(#state{name=undefined}) ->
-    pid_to_list(self());
 name(#state{name=Name}) ->
     Name.
 
-terminate(_Reason, #state{uart=Uart}) ->
+terminate(_Reason, State=#state{uart=Uart, name=Name}) ->
+    gproc_unregister(State),
     uart:close(Uart),
+    uart_devices:release(Name),
     ok.
 
 code_change(_OldVsn, State, _Extra) ->
