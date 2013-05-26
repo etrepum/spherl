@@ -1,6 +1,6 @@
 -module(spherl_server).
 -behaviour(gen_server).
--export([send/2, send_async/2]).
+-export([send/2, send_async/2, set_async_process/2]).
 -export([start/1, start_link/1, stop/1]).
 -export([init/1, handle_call/3, handle_cast/2, terminate/2, code_change/3,
          handle_info/2]).
@@ -10,7 +10,7 @@
 -record(state, { name = undefined
                , server_opts = []
                , dev = ?DEFAULT_DEV
-               , retries = 100
+               , retries = 10
                , uart = undefined
                , buffer = <<>>
                , sequence_num = 1
@@ -23,6 +23,9 @@ send(Pid, Packet) ->
 
 send_async(Pid, Packet) ->
     gen_server:cast(Pid, {send_async, Packet}).
+
+set_async_process(Pid, Proc) ->
+    gen_server:cast(Pid, {set_async_process, Proc}).
 
 start(Options) ->
     gen_start(start, Options).
@@ -59,8 +62,12 @@ stop(Name) when is_pid(Name) orelse is_atom(Name) ->
     gen_server:cast(Name, stop).
 
 init(State=#state{dev=Dev, retries=Retries}) ->
-    {ok, Uart} = open(Dev, Retries),
-    {ok, State#state{uart=Uart}}.
+    case open(Dev, Retries) of
+        {ok, Uart} ->
+            {ok, State#state{uart=Uart}};
+        {error, Err} ->
+            {stop, {uart, Err}}
+    end.
 
 handle_call({exec, F}, _From, State) ->
     {reply, F(State), State};
@@ -79,6 +86,9 @@ handle_call(Req, From, State) ->
 
 handle_cast({send_async, Packet}, State) ->
     {noreply, ignore_continuation(send_packet(Packet, false, State))};
+handle_cast({set_async_process, Proc}, State) when (is_pid(Proc) orelse
+                                                    Proc =:= undefined) ->
+    {noreply, State#state{async_process=Proc}};
 handle_cast(stop, State) ->
     {stop, normal, State};
 handle_cast(Req, State) ->
@@ -105,7 +115,8 @@ name(#state{name=undefined}) ->
 name(#state{name=Name}) ->
     Name.
 
-terminate(_Reason, _State) ->
+terminate(_Reason, #state{uart=Uart}) ->
+    uart:close(Uart),
     ok.
 
 code_change(_OldVsn, State, _Extra) ->
@@ -152,19 +163,14 @@ push_async(Msg, #state{async_process=Pid}) when is_pid(Pid) ->
 push_async(_Msg, _State) ->
     ok.
 
-open(Dev, Retries) ->
-    try uart:open(Dev, [{baud, 115200},
-                        {mode, binary},
-                        {packet, raw},
-                        {active, true},
-                        {exit_on_close, true}])
-    catch
-        error:Err ->
-            case Retries > 0 of
-                true ->
-                    time:sleep(2 * Retries),
-                    open(Dev, Retries - 1);
-                false ->
-                    {error, Err}
-            end
+open(Dev, Retries) when is_integer(Retries) ->
+    case uart:open(Dev, [{baud, 115200},
+                         {mode, binary},
+                         {packet, raw},
+                         {active, true},
+                         {exit_on_close, true}]) of
+        {error, _Err} when Retries > 0 ->
+            open(Dev, Retries - 1);
+        Res ->
+            Res
     end.

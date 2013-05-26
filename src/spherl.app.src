@@ -2,7 +2,7 @@
 {application, spherl,
  [
   {description, "Sphero Erlang SDK"},
-  {vsn, "1"},
+  {vsn, git},
   {registered, []},
   {applications, [
                   kernel,
@@ -11,9 +11,20 @@
                   dthread,
                   fnotify,
                   crypto,
+                  public_key,
+                  ssl,
+                  inets,
+                  compiler,
+                  syntax_tools,
+                  lager,
+                  mimetypes,
+                  gproc,
+                  jsx,
+                  folsom,
                   ranch,
                   cowboy
                  ]},
   {mod, { spherl_app, []}},
-  {env, []}
+  {env, [{port, 8880},
+         {num_acceptors, 100}]}
  ]}.
