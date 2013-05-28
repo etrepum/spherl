@@ -1,12 +1,14 @@
 -module(spherl_server).
+-compile([{parse_transform, lager_transform}]).
 -behaviour(gen_server).
--export([all/0, where/1, devices/0]).
+-export([all/0, where/1, devices/0, gproc_publish/1, gproc_subscribe/0]).
 -export([send/2, send_async/2, set_async_process/2]).
 -export([start/1, start_link/1, stop/1]).
 -export([init/1, handle_call/3, handle_cast/2, terminate/2, code_change/3,
          handle_info/2]).
 
 -define(DEFAULT_NAME, "tty.Sphero-PYO-RN-SPP").
+-define(GPROC_PS, spherl_server).
 
 -record(state, { name = ?DEFAULT_NAME
                , server_opts = []
@@ -32,7 +34,7 @@ devices() ->
                   nomatch ->
                       [];
                   _Found ->
-                      [{N, lists:keyfind(N, 1, All) =/= false}]
+                      [{N, lists:keyfind(N, 2, All) =/= false}]
               end
       end,
       Devs).
@@ -80,8 +82,10 @@ stop(Pid) when is_pid(Pid) ->
     gen_server:cast(Pid, stop).
 
 init(State=#state{name=Name, retries=Retries}) ->
+    lager:debug("attempting to init ~p~n", [Name]),
     case uart_devices:alloc(Name) of
         {ok, Dev} ->
+            lager:debug("attempting to open ~p~n", [Dev]),
             case open(Dev, Retries) of
                 {ok, Uart} ->
                     gproc_register(State#state{uart=Uart, dev=Dev});
@@ -102,10 +106,15 @@ gproc_register(State=#state{name=Name}) ->
 gproc_unregister(#state{name=Name}) ->
     N = iolist_to_binary(Name),
     gproc_publish([<<"device_disconnected">>, N]),
+    gproc:goodbye(),
+    ok.
+
+gproc_subscribe() ->
+    true = gproc_ps:subscribe(l, ?GPROC_PS),
     ok.
 
 gproc_publish(Event) when is_list(Event) ->
-    gproc_ps:publish(l, spherl_client, Event).
+    gproc_ps:publish(l, ?GPROC_PS, Event).
 
 handle_call({exec, F}, _From, State) ->
     {reply, F(State), State};

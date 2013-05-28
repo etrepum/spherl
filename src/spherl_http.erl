@@ -1,3 +1,4 @@
+%% Websocket and HTTP static file service for spherl, port 8880 by default
 -module(spherl_http).
 -compile([{parse_transform, lager_transform}]).
 -behaviour(cowboy_websocket_handler).
@@ -15,7 +16,7 @@ init({_Any, http}, _Req, _Opts) ->
 
 websocket_init(_Any, Req, _Opts) ->
     self() ! initialize,
-    true = gproc_ps:subscribe(l, spherl_client),
+    spherl_server:gproc_subscribe(),
     {ok, cowboy_req:compact(Req), #state{}, hibernate}.
 
 websocket_handle({text, JSON}, Req, State) ->
@@ -37,12 +38,18 @@ websocket_info(initialize, Req, State) ->
     reply([{events, [[<<"clock">>, timestamp()],
                      [<<"device_list">>, spherl_server:devices()]]}],
           Req, State);
-websocket_info({gproc_ps_event, spherl_client, Event}, Req, State) ->
+websocket_info({gproc_ps_event, spherl_server, Event}, Req, State) ->
     handle_event(Event, Req, State);
 websocket_info(_Info, Req, State) ->
     lager:debug("Ignored WS Info: ~p", [_Info]),
     {ok, Req, State, hibernate}.
 
+handle_input([<<"connect">>, Name], Req, State) ->
+    proc_lib:spawn(spherl_server_sup, start_child, [Name]),
+    {ok, Req, State, hibernate};
+handle_input([<<"disconnect">>, Name], Req, State) ->
+    spherl_server_sup:stop_child(Name),
+    {ok, Req, State, hibernate};
 handle_input(Term, Req, State) ->
     lager:debug("Unknown WS: ~p", [Term]),
     {ok, Req, State, hibernate}.

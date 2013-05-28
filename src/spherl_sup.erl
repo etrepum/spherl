@@ -1,3 +1,4 @@
+%% supervisor for the spherl application
 -module(spherl_sup).
 
 -behaviour(supervisor).
@@ -25,9 +26,6 @@ start_link() ->
 init([]) ->
     {ok,
      {{one_for_one, 5, 10},
-      [{uart_devices,
-        {uart_devices, start_link, []},
-        permanent,
-        1000,
-        worker,
-        [uart_devices]}]}}.
+      [?CHILD(uart_devices, worker),
+       ?CHILD(spherl_monitor, worker),
+       ?CHILD(spherl_server_sup, supervisor)]}}.
