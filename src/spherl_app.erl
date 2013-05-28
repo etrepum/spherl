@@ -9,14 +9,16 @@
 %% ===================================================================
 
 start(_StartType, _StartArgs) ->
-    {ok, Port} = application:get_env(?APP, port),
+    TransOpts = [{Key, Value} ||
+                    Key <- [port, ip],
+                    {ok, Value} <- [application:get_env(?APP, Key)]],
     {ok, NumAcceptors} = application:get_env(?APP, num_acceptors),
     case spherl_sup:start_link() of
         {ok, Pid} ->
             case check_listener(
                    spherl_http_listener,
                    NumAcceptors,
-                   [{port, Port}],
+                   TransOpts,
                    [{env, [{dispatch, spherl_http:dispatch()}]}]) of
                 {ok, _Listener} ->
                     {ok, Pid};

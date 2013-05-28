@@ -24,7 +24,8 @@
                   ranch,
                   cowboy
                  ]},
-  {mod, { spherl_app, []}},
-  {env, [{port, 8880},
+  {mod, {spherl_app, []}},
+  {env, [{ip, {127, 0, 0, 1}},
+         {port, 8880},
          {num_acceptors, 100}]}
  ]}.

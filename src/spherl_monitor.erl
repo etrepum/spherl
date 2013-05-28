@@ -21,7 +21,7 @@ stop(Pid) when is_pid(Pid) ->
     gen_server:cast(Pid, stop).
 
 init(State) ->
-    ok = spherl_server:subscribe(),
+    ok = spherl_server:gproc_subscribe(),
     {ok, State}.
 
 handle_call(Req, From, State) ->
